@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Psychedelic Arrow Flow</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #0b001f 0%, #02000a 50%, #000000 100%);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: #e8e6ff;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hud {
+      position: fixed;
+      left: 50%;
+      top: 24px;
+      transform: translateX(-50%);
+      text-align: center;
+      padding: 10px 18px;
+      border-radius: 999px;
+      background: rgba(8, 4, 24, 0.6);
+      border: 1px solid rgba(130, 100, 255, 0.3);
+      backdrop-filter: blur(10px);
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      box-shadow: 0 0 20px rgba(125, 90, 255, 0.25);
+      pointer-events: none;
+    }
+
+    .hud span {
+      color: #7dfffc;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="psychedelic-field" aria-label="Psychedelic arrow field"></canvas>
+  <div class="hud">Move your <span>cursor</span> to guide the arrows</div>
+
+  <script>
+    const canvas = document.getElementById("psychedelic-field");
+    const context = canvas.getContext("2d");
+
+    const state = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pointer: {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      },
+      arrows: [],
+      hues: [320, 205, 140, 30, 265, 180],
+    };
+
+    const arrowCount = 14;
+    const maxTrail = 48;
+
+    function resizeCanvas() {
+      state.width = window.innerWidth;
+      state.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = state.width * dpr;
+      canvas.height = state.height * dpr;
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.lineCap = "round";
+    }
+
+    function createArrow(index) {
+      return {
+        x: state.pointer.x,
+        y: state.pointer.y,
+        angle: 0,
+        offset: index * (Math.PI * 2) / arrowCount,
+        speed: 0.04 + index * 0.003,
+        radius: 70 + index * 16,
+        trail: [],
+        hueBase: state.hues[index % state.hues.length],
+      };
+    }
+
+    function init() {
+      resizeCanvas();
+      state.arrows = Array.from({ length: arrowCount }, (_, index) => createArrow(index));
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("pointermove", (event) => {
+        state.pointer.x = event.clientX;
+        state.pointer.y = event.clientY;
+      });
+    }
+
+    function updateArrow(arrow, time) {
+      const pulse = Math.sin(time * 0.0015 + arrow.offset);
+      const spiral = Math.cos(time * 0.001 + arrow.offset);
+      const targetX = state.pointer.x + Math.cos(arrow.offset + time * 0.001) * arrow.radius * (1 + pulse * 0.3);
+      const targetY = state.pointer.y + Math.sin(arrow.offset + time * 0.0012) * arrow.radius * (1 + spiral * 0.3);
+
+      arrow.x += (targetX - arrow.x) * (0.08 + arrow.speed);
+      arrow.y += (targetY - arrow.y) * (0.08 + arrow.speed);
+
+      const dx = targetX - arrow.x;
+      const dy = targetY - arrow.y;
+      arrow.angle = Math.atan2(dy, dx);
+
+      arrow.trail.unshift({ x: arrow.x, y: arrow.y, angle: arrow.angle });
+      if (arrow.trail.length > maxTrail) {
+        arrow.trail.pop();
+      }
+    }
+
+    function drawArrowSegment(x, y, angle, colorSet, alpha, scale) {
+      context.save();
+      context.translate(x, y);
+      context.rotate(angle);
+      context.scale(scale, scale);
+
+      const gradient = context.createLinearGradient(-42, -8, 42, 8);
+      gradient.addColorStop(0, `hsla(${colorSet[0]}, 100%, 70%, 0.95)`);
+      gradient.addColorStop(0.5, `hsla(${colorSet[1]}, 100%, 65%, 0.95)`);
+      gradient.addColorStop(1, `hsla(${colorSet[2]}, 100%, 68%, 0.95)`);
+
+      context.globalAlpha = alpha;
+      context.strokeStyle = gradient;
+      context.lineWidth = 7;
+      context.shadowColor = `hsla(${colorSet[1]}, 100%, 70%, 0.9)`;
+      context.shadowBlur = 22;
+
+      context.beginPath();
+      context.moveTo(-32, 0);
+      context.lineTo(22, 0);
+      context.lineTo(8, -12);
+      context.moveTo(22, 0);
+      context.lineTo(8, 12);
+      context.stroke();
+
+      context.restore();
+    }
+
+    function render(time) {
+      const timeOffset = time * 0.03;
+      context.clearRect(0, 0, state.width, state.height);
+      context.fillStyle = "rgba(2, 0, 10, 0.15)";
+      context.fillRect(0, 0, state.width, state.height);
+
+      context.globalCompositeOperation = "lighter";
+      state.arrows.forEach((arrow) => {
+        updateArrow(arrow, time);
+        arrow.trail.forEach((segment, index) => {
+          const alpha = 1 - index / maxTrail;
+          const scale = 1 - index / (maxTrail * 1.4);
+          const hueShift = timeOffset + arrow.offset * 80 + index * 1.5;
+          const colorSet = [
+            (arrow.hueBase + hueShift) % 360,
+            (arrow.hueBase + 40 + hueShift) % 360,
+            (arrow.hueBase + 90 + hueShift) % 360,
+          ];
+          drawArrowSegment(segment.x, segment.y, segment.angle, colorSet, alpha * 0.8, scale);
+        });
+      });
+      context.globalCompositeOperation = "source-over";
+
+      requestAnimationFrame(render);
+    }
+
+    init();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
